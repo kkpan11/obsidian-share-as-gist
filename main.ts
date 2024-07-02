@@ -45,6 +45,11 @@ interface CopyGistUrlEditorCallbackParams {
   plugin: ShareAsGistPlugin;
 }
 
+interface OpenGistEditorCallbackParams {
+  app: App;
+  plugin: ShareAsGistPlugin;
+}
+
 interface DocumentChangedAutoSaveCallbackParams {
   app: App;
   plugin: ShareAsGistPlugin;
@@ -61,7 +66,7 @@ const getLatestSettings = async (
 
 const stripFrontMatter = (content: string): string => matter(content).content;
 
-const copyGitUrlEditorCallback =
+const copyGistUrlEditorCallback =
   (opts: CopyGistUrlEditorCallbackParams) => async () => {
     const { app, plugin } = opts;
 
@@ -105,6 +110,51 @@ const copyGitUrlEditorCallback =
       const sharedGist = existingSharedGists[0];
       navigator.clipboard.writeText(sharedGist.url);
       return new Notice('Copied gist URL to clipboard.');
+    }
+  };
+
+const openGistEditorCallback =
+  (opts: OpenGistEditorCallbackParams) => async () => {
+    const { app, plugin } = opts;
+
+    const { enableUpdatingGistsAfterCreation } =
+      await getLatestSettings(plugin);
+
+    if (!enableUpdatingGistsAfterCreation) {
+      return new Notice(
+        "You need to enable 'Update gists after creation' in Settings to use this command.",
+      );
+    }
+
+    const view = app.workspace.getActiveViewOfType(MarkdownView);
+
+    if (!view) {
+      return new Notice('No active file');
+    }
+
+    const editor = view.editor;
+    const originalContent = editor.getValue();
+
+    const existingSharedGists = getSharedGistsForFile(originalContent);
+
+    if (existingSharedGists.length === 0) {
+      return new Notice(
+        'You must share this note as a gist before you can open its gist.',
+      );
+    }
+
+    if (existingSharedGists.length > 1) {
+      new SelectExistingGistModal(
+        app,
+        existingSharedGists,
+        false,
+        async (sharedGist) => {
+          window.open(sharedGist.url, '_blank');
+        },
+      ).open();
+    } else {
+      const sharedGist = existingSharedGists[0];
+      window.open(sharedGist.url, '_blank');
     }
   };
 
@@ -295,7 +345,16 @@ export default class ShareAsGistPlugin extends Plugin {
     this.addCommand({
       id: 'copy-gist-url',
       name: 'Copy GitHub.com gist URL',
-      callback: copyGitUrlEditorCallback({
+      callback: copyGistUrlEditorCallback({
+        plugin: this,
+        app: this.app,
+      }),
+    });
+
+    this.addCommand({
+      id: 'open-gist-url',
+      name: 'Open gist on GitHub.com',
+      callback: openGistEditorCallback({
         plugin: this,
         app: this.app,
       }),
